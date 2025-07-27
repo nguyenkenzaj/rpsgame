@@ -16,7 +16,11 @@ def get_player_data():
     username = 'Unknown'
     try:
         player = get_player(int(user_id), username)
-        return jsonify({'turns': player[2], 'coins': player[3]})  # Map points to coins
+        return jsonify({
+            'turns': player[2],
+            'coins': player[3],
+            'photo_url': 'https://via.placeholder.com/50'  # Thay bằng URL avatar nếu có
+        })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -50,11 +54,35 @@ def play_game():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/leaderboard', methods=['GET'])
-def leaderboard():
+@app.route('/random_match', methods=['POST'])
+def random_match():
+    user_id = request.args.get('user_id')
     try:
-        players = get_leaderboard()
-        return jsonify([{'name': player[1], 'coins': player[3]} for player in players])
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute('SELECT room_code, user_id FROM rooms WHERE opponent_id IS NULL AND user_id != ?', (user_id,))
+        room = c.fetchone()
+        if room:
+            room_code, creator_id = room
+            c.execute('UPDATE rooms SET opponent_id = ? WHERE room_code = ?', (user_id, room_code))
+            conn.commit()
+            c.execute('SELECT points FROM players WHERE user_id = ?', (creator_id,))
+            opponent_coins = c.fetchone()[0]
+            conn.close()
+            return jsonify({
+                'roomCode': room_code,
+                'opponent_coins': opponent_coins,
+                'opponent_photo': 'https://via.placeholder.com/50'
+            })
+        room_code = str(uuid.uuid4())[:8]
+        c.execute('INSERT INTO rooms (room_code, user_id) VALUES (?, ?)', (room_code, user_id))
+        conn.commit()
+        conn.close()
+        return jsonify({
+            'roomCode': room_code,
+            'opponent_coins': 0,
+            'opponent_photo': 'https://via.placeholder.com/50'
+        })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -69,6 +97,90 @@ def create_room():
         conn.commit()
         conn.close()
         return jsonify({'roomCode': room_code})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/join_room', methods=['POST'])
+def join_room():
+    user_id = request.args.get('user_id')
+    room_code = request.args.get('room_code')
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute('SELECT user_id FROM rooms WHERE room_code = ?', (room_code,))
+        room = c.fetchone()
+        if not room:
+            return jsonify({'error': 'Mã phòng không tồn tại!'}), 404
+        creator_id = room[0]
+        c.execute('UPDATE rooms SET opponent_id = ? WHERE room_code = ?', (user_id, room_code))
+        conn.commit()
+        c.execute('SELECT points FROM players WHERE user_id = ?', (creator_id,))
+        opponent_coins = c.fetchone()[0]
+        conn.close()
+        return jsonify({
+            'roomCode': room_code,
+            'opponent_coins': opponent_coins,
+            'opponent_photo': 'https://via.placeholder.com/50'
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/play_pvp', methods=['POST'])
+def play_pvp():
+    user_id = request.args.get('user_id')
+    choice = request.args.get('choice')
+    room_code = request.args.get('room_code')
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute('SELECT user_id, opponent_id FROM rooms WHERE room_code = ?', (room_code,))
+        room = c.fetchone()
+        if not room:
+            return jsonify({'error': 'Phòng không tồn tại!'}), 404
+        creator_id, opponent_id = room
+        if user_id != str(creator_id) and user_id != str(opponent_id):
+            return jsonify({'error': 'Bạn không ở trong phòng này!'}), 403
+        c.execute('SELECT turns, points FROM players WHERE user_id = ?', (user_id,))
+        player = c.fetchone()
+        if player[0] <= 0:
+            return jsonify({
+                'error': 'Hết lượt chơi!',
+                'turns': player[0],
+                'coins': player[1]
+            }), 400
+        opponent_id = creator_id if user_id != str(creator_id) else opponent_id
+        c.execute('SELECT turns, points FROM players WHERE user_id = ?', (opponent_id,))
+        opponent = c.fetchone()
+        opponent_choice = random.choice(['rock', 'paper', 'scissors'])  # Giả lập lựa chọn đối thủ
+        result = determine_winner(choice, opponent_choice)
+        turns = player[0] - 1
+        coins = player[1]
+        opponent_coins = opponent[1]
+        if result == 'Thắng':
+            coins += 25
+            opponent_coins -= 10
+        elif result == 'Thua':
+            coins -= 10
+            opponent_coins += 25
+        update_player(int(user_id), turns, coins)
+        update_player(int(opponent_id), opponent[0], opponent_coins)
+        conn.close()
+        return jsonify({
+            'user_choice': choice,
+            'opponent_choice': opponent_choice,
+            'result': result,
+            'turns': turns,
+            'coins': coins,
+            'opponent_coins': opponent_coins
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/leaderboard', methods=['GET'])
+def leaderboard():
+    try:
+        players = get_leaderboard()
+        return jsonify([{'name': player[1], 'coins': player[3]} for player in players])
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

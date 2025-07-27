@@ -10,9 +10,9 @@ def get_player(user_id, username):
     player = c.fetchone()
     if not player:
         c.execute('INSERT INTO players (user_id, username, turns, points, last_reset) VALUES (?, ?, ?, ?, ?)',
-                  (user_id, username, 10, 0, '2025-07-27T14:59:00'))
+                  (user_id, username, 10, 0, '2025-07-27T15:59:00'))
         conn.commit()
-        player = (user_id, username, 10, 0, '2025-07-27T14:59:00')
+        player = (user_id, username, 10, 0, '2025-07-27T15:59:00')
     conn.close()
     return player
 
@@ -36,6 +36,6 @@ def reset_daily_turns(user_id, username):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute('UPDATE players SET turns = 10, last_reset = ? WHERE user_id = ?',
-              ('2025-07-27T14:59:00', user_id))
+              ('2025-07-27T15:59:00', user_id))
     conn.commit()
     conn.close()
