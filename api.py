@@ -7,7 +7,7 @@ import uuid
 import os
 
 app = Flask(__name__)
-CORS(app)  # Cho phép CORS
+CORS(app)
 DB_PATH = os.path.join(os.path.dirname(__file__), 'database', 'rps.db')
 
 @app.route('/player', methods=['GET'])
@@ -16,7 +16,7 @@ def get_player_data():
     username = 'Unknown'
     try:
         player = get_player(int(user_id), username)
-        return jsonify({'turns': player[2], 'coins': player[3]})
+        return jsonify({'turns': player[2], 'coins': player[3]})  # Map points to coins
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
